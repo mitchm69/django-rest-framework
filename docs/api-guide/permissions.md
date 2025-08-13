@@ -173,12 +173,11 @@ This permission is suitable if you want to your API to allow read permissions to
 
 This permission class ties into Django's standard `django.contrib.auth` [model permissions][contribauth].  This permission must only be applied to views that have a `.queryset` property or `get_queryset()` method. Authorization will only be granted if the user *is authenticated* and has the *relevant model permissions* assigned. The appropriate model is determined by checking `get_queryset().model` or `queryset.model`.
 
-* `GET` requests require the user to have the `view` or `change` permission on the model
 * `POST` requests require the user to have the `add` permission on the model.
 * `PUT` and `PATCH` requests require the user to have the `change` permission on the model.
 * `DELETE` requests require the user to have the `delete` permission on the model.
 
-The default behaviour can also be overridden to support custom model permissions.
+The default behavior can also be overridden to support custom model permissions.  For example, you might want to include a `view` model permission for `GET` requests.
 
 To use custom model permissions, override `DjangoModelPermissions` and set the `.perms_map` property.  Refer to the source code for details.
 
@@ -202,7 +201,7 @@ As with `DjangoModelPermissions` you can use custom model permissions by overrid
 
 ---
 
-**Note**: If you need object level `view` permissions for `GET`, `HEAD` and `OPTIONS` requests and are using django-guardian for your object-level permissions backend, you'll want to consider using the `DjangoObjectPermissionsFilter` class provided by the [`djangorestframework-guardian2` package][django-rest-framework-guardian2]. It ensures that list endpoints only return results including objects for which the user has appropriate view permissions.
+**Note**: If you need object level `view` permissions for `GET`, `HEAD` and `OPTIONS` requests and are using django-guardian for your object-level permissions backend, you'll want to consider using the `DjangoObjectPermissionsFilter` class provided by the [`djangorestframework-guardian` package][django-rest-framework-guardian]. It ensures that list endpoints only return results including objects for which the user has appropriate view permissions.
 
 ---
 
@@ -357,6 +356,6 @@ The [Django Rest Framework PSQ][drf-psq] package is an extension that gives supp
 [rest-framework-roles]: https://github.com/Pithikos/rest-framework-roles
 [djangorestframework-api-key]: https://florimondmanca.github.io/djangorestframework-api-key/
 [django-rest-framework-role-filters]: https://github.com/allisson/django-rest-framework-role-filters
-[django-rest-framework-guardian2]: https://github.com/johnthagen/django-rest-framework-guardian2
+[django-rest-framework-guardian]: https://github.com/rpkilby/django-rest-framework-guardian
 [drf-access-policy]: https://github.com/rsinger86/drf-access-policy
 [drf-psq]: https://github.com/drf-psq/drf-psq

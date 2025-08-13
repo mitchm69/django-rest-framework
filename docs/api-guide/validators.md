@@ -13,7 +13,7 @@ Most of the time you're dealing with validation in REST framework you'll simply 
 
 However, sometimes you'll want to place your validation logic into reusable components, so that it can easily be reused throughout your codebase. This can be achieved by using validator functions and validator classes.
 
-## Validation in REST framework
+## Validation in REST framework
 
 Validation in Django REST framework serializers is handled a little differently to how validation works in Django's `ModelForm` class.
 
@@ -48,7 +48,7 @@ If we open up the Django shell using `manage.py shell` we can now
     CustomerReportSerializer():
         id = IntegerField(label='ID', read_only=True)
         time_raised = DateTimeField(read_only=True)
-        reference = CharField(max_length=20, validators=[<UniqueValidator(queryset=CustomerReportRecord.objects.all())>])
+        reference = CharField(max_length=20, validators=[UniqueValidator(queryset=CustomerReportRecord.objects.all())])
         description = CharField(style={'type': 'textarea'})
 
 The interesting bit here is the `reference` field. We can see that the uniqueness constraint is being explicitly enforced by a validator on the serializer field.
@@ -75,7 +75,7 @@ This validator should be applied to *serializer fields*, like so:
         validators=[UniqueValidator(queryset=BlogPost.objects.all())]
     )
 
-## UniqueTogetherValidator
+## UniqueTogetherValidator
 
 This validator can be used to enforce `unique_together` constraints on model instances.
 It has two required arguments, and a single optional `messages` argument:
@@ -92,7 +92,7 @@ The validator should be applied to *serializer classes*, like so:
         # ...
         class Meta:
             # ToDo items belong to a parent list, and have an ordering defined
-            # by the 'position' field. No two items in a given list may share
+            # by the 'position' field. No two items in a given list may share
             # the same position.
             validators = [
                 UniqueTogetherValidator(
@@ -164,14 +164,18 @@ If you want the date field to be entirely hidden from the user, then use `Hidden
 
 ---
 
+---
+
+**Note:** `HiddenField()` does not appear in `partial=True` serializer (when making `PATCH` request). 
+
+---
+
 # Advanced field defaults
 
 Validators that are applied across multiple fields in the serializer can sometimes require a field input that should not be provided by the API client, but that *is* available as input to the validator.
+For this purposes use `HiddenField`. This field will be present in `validated_data` but *will not* be used in the serializer output representation.
 
-Two patterns that you may want to use for this sort of validation include:
-
-* Using `HiddenField`. This field will be present in `validated_data` but *will not* be used in the serializer output representation.
-* Using a standard field with `read_only=True`, but that also includes a `default=…` argument. This field *will* be used in the serializer output representation, but cannot be set directly by the user.
+**Note:** Using a `read_only=True` field is excluded from writable fields so it won't use a `default=…` argument. Look [3.8 announcement](https://www.django-rest-framework.org/community/3.8-announcement/#altered-the-behaviour-of-read_only-plus-default-on-field).
 
 REST framework includes a couple of defaults that may be useful in this context.
 
@@ -183,7 +187,7 @@ A default class that can be used to represent the current user. In order to use 
         default=serializers.CurrentUserDefault()
     )
 
-#### CreateOnlyDefault
+#### CreateOnlyDefault
 
 A default class that can be used to *only set a default argument during create operations*. During updates the field is omitted.
 
@@ -295,13 +299,14 @@ To write a class-based validator, use the `__call__` method. Class-based validat
 
 In some advanced cases you might want a validator to be passed the serializer
 field it is being used with as additional context. You can do so by setting
-a `requires_context = True` attribute on the validator. The `__call__` method
+a `requires_context = True` attribute on the validator class. The `__call__` method
 will then be called with the `serializer_field`
 or `serializer` as an additional argument.
 
-    requires_context = True
+    class MultipleOf:
+        requires_context = True
 
-    def __call__(self, value, serializer_field):
-        ...
+        def __call__(self, value, serializer_field):
+            ...
 
 [cite]: https://docs.djangoproject.com/en/stable/ref/validators/

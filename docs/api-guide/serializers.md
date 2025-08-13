@@ -233,7 +233,7 @@ Serializer classes can also include reusable validators that are applied to the 
 
     class EventSerializer(serializers.Serializer):
         name = serializers.CharField()
-        room_number = serializers.IntegerField(choices=[101, 102, 103, 201])
+        room_number = serializers.ChoiceField(choices=[101, 102, 103, 201])
         date = serializers.DateField()
 
         class Meta:
@@ -845,8 +845,6 @@ Here's an example of how you might choose to implement multiple updates:
         class Meta:
             list_serializer_class = BookListSerializer
 
-It is possible that a third party package may be included alongside the 3.1 release that provides some automatic support for multiple update operations, similar to the `allow_add_remove` behavior that was present in REST framework 2.
-
 #### Customizing ListSerializer initialization
 
 When a serializer with `many=True` is instantiated, we need to determine which arguments and keyword arguments should be passed to the `.__init__()` method for both the child `Serializer` class, and for the parent `ListSerializer` class.
@@ -1191,6 +1189,10 @@ The [drf-writable-nested][drf-writable-nested] package provides writable nested 
 
 The [drf-encrypt-content][drf-encrypt-content] package helps you encrypt your data, serialized through ModelSerializer. It also contains some helper functions. Which helps you to encrypt your data.
 
+## Shapeless Serializers
+
+The [drf-shapeless-serializers][drf-shapeless-serializers] package provides dynamic serializer configuration capabilities, allowing runtime field selection, renaming, attribute modification, and nested relationship configuration without creating multiple serializer classes. It helps eliminate serializer boilerplate while providing flexible API responses.
+
 
 [cite]: https://groups.google.com/d/topic/django-users/sVFaOfQi4wY/discussion
 [relations]: relations.md
@@ -1214,3 +1216,4 @@ The [drf-encrypt-content][drf-encrypt-content] package helps you encrypt your da
 [djangorestframework-queryfields]: https://djangorestframework-queryfields.readthedocs.io/
 [drf-writable-nested]: https://github.com/beda-software/drf-writable-nested
 [drf-encrypt-content]: https://github.com/oguzhancelikarslan/drf-encrypt-content
+[drf-shapeless-serializers]: https://github.com/khaledsukkar2/drf-shapeless-serializers

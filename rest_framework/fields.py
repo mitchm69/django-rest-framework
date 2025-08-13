@@ -6,8 +6,9 @@ import functools
 import inspect
 import re
 import uuid
-from collections import OrderedDict
+import warnings
 from collections.abc import Mapping
+from enum import Enum
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
@@ -15,7 +16,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import (
     EmailValidator, MaxLengthValidator, MaxValueValidator, MinLengthValidator,
     MinValueValidator, ProhibitNullCharactersValidator, RegexValidator,
-    URLValidator, ip_address_validators
+    URLValidator
 )
 from django.forms import FilePathField as DjangoFilePathField
 from django.forms import ImageField as DjangoImageField
@@ -23,14 +24,19 @@ from django.utils import timezone
 from django.utils.dateparse import (
     parse_date, parse_datetime, parse_duration, parse_time
 )
-from django.utils.duration import duration_string
+from django.utils.duration import duration_iso_string, duration_string
 from django.utils.encoding import is_protected_type, smart_str
 from django.utils.formats import localize_input, sanitize_separators
 from django.utils.ipv6 import clean_ipv6_address
 from django.utils.translation import gettext_lazy as _
-from pytz.exceptions import InvalidTimeError
 
-from rest_framework import ISO_8601
+try:
+    import pytz
+except ImportError:
+    pytz = None
+
+from rest_framework import DJANGO_DURATION_FORMAT, ISO_8601
+from rest_framework.compat import ip_address_validators
 from rest_framework.exceptions import ErrorDetail, ValidationError
 from rest_framework.settings import api_settings
 from rest_framework.utils import html, humanize_datetime, json, representation
@@ -105,30 +111,9 @@ def get_attribute(instance, attrs):
                 # If we raised an Attribute or KeyError here it'd get treated
                 # as an omitted field in `Field.get_attribute()`. Instead we
                 # raise a ValueError to ensure the exception is not masked.
-                raise ValueError('Exception raised in callable attribute "{}"; original exception was: {}'.format(attr, exc))
+                raise ValueError(f'Exception raised in callable attribute "{attr}"; original exception was: {exc}')
 
     return instance
-
-
-def set_value(dictionary, keys, value):
-    """
-    Similar to Python's built in `dictionary[key] = value`,
-    but takes a list of nested keys instead of a single key.
-
-    set_value({'a': 1}, [], {'b': 2}) -> {'a': 1, 'b': 2}
-    set_value({'a': 1}, ['x'], 2) -> {'a': 1, 'x': 2}
-    set_value({'a': 1}, ['x', 'y'], 2) -> {'a': 1, 'x': {'y': 2}}
-    """
-    if not keys:
-        dictionary.update(value)
-        return
-
-    for key in keys[:-1]:
-        if key not in dictionary:
-            dictionary[key] = {}
-        dictionary = dictionary[key]
-
-    dictionary[keys[-1]] = value
 
 
 def to_choices_dict(choices):
@@ -143,7 +128,7 @@ def to_choices_dict(choices):
     # choices = [1, 2, 3]
     # choices = [(1, 'First'), (2, 'Second'), (3, 'Third')]
     # choices = [('Category', ((1, 'First'), (2, 'Second'))), (3, 'Third')]
-    ret = OrderedDict()
+    ret = {}
     for choice in choices:
         if not isinstance(choice, (list, tuple)):
             # single choice
@@ -166,7 +151,7 @@ def flatten_choices_dict(choices):
     flatten_choices_dict({1: '1st', 2: '2nd'}) -> {1: '1st', 2: '2nd'}
     flatten_choices_dict({'Group': {1: '1st', 2: '2nd'}}) -> {1: '1st', 2: '2nd'}
     """
-    ret = OrderedDict()
+    ret = {}
     for key, value in choices.items():
         if isinstance(value, dict):
             # grouped choices (category, sub choices)
@@ -678,22 +663,27 @@ class BooleanField(Field):
     default_empty_html = False
     initial = False
     TRUE_VALUES = {
-        't', 'T',
-        'y', 'Y', 'yes', 'Yes', 'YES',
-        'true', 'True', 'TRUE',
-        'on', 'On', 'ON',
-        '1', 1,
-        True
+        't',
+        'y',
+        'yes',
+        'true',
+        'on',
+        '1',
+        1,
+        True,
     }
     FALSE_VALUES = {
-        'f', 'F',
-        'n', 'N', 'no', 'No', 'NO',
-        'false', 'False', 'FALSE',
-        'off', 'Off', 'OFF',
-        '0', 0, 0.0,
-        False
+        'f',
+        'n',
+        'no',
+        'false',
+        'off',
+        '0',
+        0,
+        0.0,
+        False,
     }
-    NULL_VALUES = {'null', 'Null', 'NULL', '', None}
+    NULL_VALUES = {'null', '', None}
 
     def __init__(self, **kwargs):
         if kwargs.get('allow_null', False):
@@ -701,22 +691,28 @@ class BooleanField(Field):
             self.initial = None
         super().__init__(**kwargs)
 
+    @staticmethod
+    def _lower_if_str(value):
+        if isinstance(value, str):
+            return value.lower()
+        return value
+
     def to_internal_value(self, data):
         with contextlib.suppress(TypeError):
-            if data in self.TRUE_VALUES:
+            if self._lower_if_str(data) in self.TRUE_VALUES:
                 return True
-            elif data in self.FALSE_VALUES:
+            elif self._lower_if_str(data) in self.FALSE_VALUES:
                 return False
-            elif data in self.NULL_VALUES and self.allow_null:
+            elif self._lower_if_str(data) in self.NULL_VALUES and self.allow_null:
                 return None
-        self.fail('invalid', input=data)
+        self.fail("invalid", input=data)
 
     def to_representation(self, value):
-        if value in self.TRUE_VALUES:
+        if self._lower_if_str(value) in self.TRUE_VALUES:
             return True
-        elif value in self.FALSE_VALUES:
+        elif self._lower_if_str(value) in self.FALSE_VALUES:
             return False
-        if value in self.NULL_VALUES and self.allow_null:
+        if self._lower_if_str(value) in self.NULL_VALUES and self.allow_null:
             return None
         return bool(value)
 
@@ -869,7 +865,7 @@ class IPAddressField(CharField):
         self.protocol = protocol.lower()
         self.unpack_ipv4 = (self.protocol == 'both')
         super().__init__(**kwargs)
-        validators, error_message = ip_address_validators(protocol, self.unpack_ipv4)
+        validators = ip_address_validators(protocol, self.unpack_ipv4)
         self.validators.extend(validators)
 
     def to_internal_value(self, data):
@@ -990,6 +986,11 @@ class DecimalField(Field):
         self.max_value = max_value
         self.min_value = min_value
 
+        if self.max_value is not None and not isinstance(self.max_value, (int, decimal.Decimal)):
+            warnings.warn("max_value should be an integer or Decimal instance.")
+        if self.min_value is not None and not isinstance(self.min_value, (int, decimal.Decimal)):
+            warnings.warn("min_value should be an integer or Decimal instance.")
+
         if self.max_digits is not None and self.decimal_places is not None:
             self.max_whole_digits = self.max_digits - self.decimal_places
         else:
@@ -1102,7 +1103,7 @@ class DecimalField(Field):
         if self.localize:
             return localize_input(quantized)
 
-        return '{:f}'.format(quantized)
+        return f'{quantized:f}'
 
     def quantize(self, value):
         """
@@ -1161,8 +1162,10 @@ class DateTimeField(Field):
                 if not valid_datetime(dt):
                     self.fail('make_aware', timezone=field_timezone)
                 return dt
-            except InvalidTimeError:
-                self.fail('make_aware', timezone=field_timezone)
+            except Exception as e:
+                if pytz and isinstance(e, pytz.exceptions.InvalidTimeError):
+                    self.fail('make_aware', timezone=field_timezone)
+                raise e
         elif (field_timezone is None) and timezone.is_aware(value):
             return timezone.make_naive(value, datetime.timezone.utc)
         return value
@@ -1348,9 +1351,22 @@ class DurationField(Field):
         'overflow': _('The number of days must be between {min_days} and {max_days}.'),
     }
 
-    def __init__(self, **kwargs):
+    def __init__(self, *, format=empty, **kwargs):
         self.max_value = kwargs.pop('max_value', None)
         self.min_value = kwargs.pop('min_value', None)
+        if format is not empty:
+            if format is None or (isinstance(format, str) and format.lower() in (ISO_8601, DJANGO_DURATION_FORMAT)):
+                self.format = format
+            elif isinstance(format, str):
+                raise ValueError(
+                    f"Unknown duration format provided, got '{format}'"
+                    " while expecting 'django', 'iso-8601' or `None`."
+                )
+            else:
+                raise TypeError(
+                    "duration format must be either str or `None`,"
+                    f" not {type(format).__name__}"
+                )
         super().__init__(**kwargs)
         if self.max_value is not None:
             message = lazy_format(self.error_messages['max_value'], max_value=self.max_value)
@@ -1373,7 +1389,26 @@ class DurationField(Field):
         self.fail('invalid', format='[DD] [HH:[MM:]]ss[.uuuuuu]')
 
     def to_representation(self, value):
-        return duration_string(value)
+        output_format = getattr(self, 'format', api_settings.DURATION_FORMAT)
+
+        if output_format is None:
+            return value
+
+        if isinstance(output_format, str):
+            if output_format.lower() == ISO_8601:
+                return duration_iso_string(value)
+
+            if output_format.lower() == DJANGO_DURATION_FORMAT:
+                return duration_string(value)
+
+            raise ValueError(
+                f"Unknown duration format provided, got '{output_format}'"
+                " while expecting 'django', 'iso-8601' or `None`."
+            )
+        raise TypeError(
+            "duration format must be either str or `None`,"
+            f" not {type(output_format).__name__}"
+        )
 
 
 # Choice types...
@@ -1397,7 +1432,8 @@ class ChoiceField(Field):
     def to_internal_value(self, data):
         if data == '' and self.allow_blank:
             return ''
-
+        if isinstance(data, Enum) and str(data) != str(data.value):
+            data = data.value
         try:
             return self.choice_strings_to_values[str(data)]
         except KeyError:
@@ -1406,6 +1442,8 @@ class ChoiceField(Field):
     def to_representation(self, value):
         if value in ('', None):
             return value
+        if isinstance(value, Enum) and str(value) != str(value.value):
+            value = value.value
         return self.choice_strings_to_values.get(str(value), value)
 
     def iter_options(self):
@@ -1429,7 +1467,7 @@ class ChoiceField(Field):
         # Allows us to deal with eg. integer choices while supporting either
         # integer or string input, but still get the correct datatype out.
         self.choice_strings_to_values = {
-            str(key): key for key in self.choices
+            str(key.value) if isinstance(key, Enum) and str(key) != str(key.value) else str(key): key for key in self.choices
         }
 
     choices = property(_get_choices, _set_choices)
@@ -1649,7 +1687,7 @@ class ListField(Field):
 
     def run_child_validation(self, data):
         result = []
-        errors = OrderedDict()
+        errors = {}
 
         for idx, item in enumerate(data):
             try:
@@ -1713,7 +1751,7 @@ class DictField(Field):
 
     def run_child_validation(self, data):
         result = {}
-        errors = OrderedDict()
+        errors = {}
 
         for key, value in data.items():
             key = str(key)
@@ -1815,6 +1853,7 @@ class HiddenField(Field):
     constraint on a pair of fields, as we need some way to include the date in
     the validated data.
     """
+
     def __init__(self, **kwargs):
         assert 'default' in kwargs, 'default is a required argument.'
         kwargs['write_only'] = True
@@ -1844,6 +1883,7 @@ class SerializerMethodField(Field):
         def get_extra_info(self, obj):
             return ...  # Calculate some data to return.
     """
+
     def __init__(self, method_name=None, **kwargs):
         self.method_name = method_name
         kwargs['source'] = '*'
@@ -1853,7 +1893,7 @@ class SerializerMethodField(Field):
     def bind(self, field_name, parent):
         # The method name defaults to `get_{field_name}`.
         if self.method_name is None:
-            self.method_name = 'get_{field_name}'.format(field_name=field_name)
+            self.method_name = f'get_{field_name}'
 
         super().bind(field_name, parent)
 

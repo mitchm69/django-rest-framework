@@ -403,6 +403,56 @@ class TestOperationIntrospection(TestCase):
         assert list(schema['properties']['nested']['properties'].keys()) == ['number']
         assert schema['properties']['nested']['required'] == ['number']
 
+    def test_response_body_partial_serializer(self):
+        path = '/'
+        method = 'GET'
+
+        class ItemSerializer(serializers.Serializer):
+            text = serializers.CharField()
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.partial = True
+
+        class View(generics.GenericAPIView):
+            serializer_class = ItemSerializer
+
+        view = create_view(
+            View,
+            method,
+            create_request(path),
+        )
+        inspector = AutoSchema()
+        inspector.view = view
+
+        responses = inspector.get_responses(path, method)
+        assert responses == {
+            '200': {
+                'description': '',
+                'content': {
+                    'application/json': {
+                        'schema': {
+                            'type': 'array',
+                            'items': {
+                                '$ref': '#/components/schemas/Item'
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        components = inspector.get_components(path, method)
+        assert components == {
+            'Item': {
+                'type': 'object',
+                'properties': {
+                    'text': {
+                        'type': 'string',
+                    },
+                },
+            }
+        }
+
     def test_list_response_body_generation(self):
         """Test that an array schema is returned for list views."""
         path = '/'
@@ -1162,6 +1212,31 @@ class TestGenerator(TestCase):
         assert b'"openapi": "' in ret
         assert b'"default": "0.0"' in ret
 
+    def test_schema_rendering_to_yaml(self):
+        patterns = [
+            path('example/', views.ExampleGenericAPIView.as_view()),
+        ]
+        generator = SchemaGenerator(patterns=patterns)
+
+        request = create_request('/')
+        schema = generator.get_schema(request=request)
+        ret = OpenAPIRenderer().render(schema)
+        assert b"openapi: " in ret
+        assert b"default: '0.0'" in ret
+
+    def test_schema_rendering_timedelta_to_yaml_with_validator(self):
+
+        patterns = [
+            path('example/', views.ExampleValidatedAPIView.as_view()),
+        ]
+        generator = SchemaGenerator(patterns=patterns)
+
+        request = create_request('/')
+        schema = generator.get_schema(request=request)
+        ret = OpenAPIRenderer().render(schema)
+        assert b"openapi: " in ret
+        assert b"duration:\n          type: string\n          minimum: \'10.0\'\n" in ret
+
     def test_schema_with_no_paths(self):
         patterns = []
         generator = SchemaGenerator(patterns=patterns)
@@ -1272,7 +1347,7 @@ class TestGenerator(TestCase):
 
             assert len(w) == 1
             assert issubclass(w[-1].category, UserWarning)
-            assert 'has been overriden with a different value.' in str(w[-1].message)
+            assert 'has been overridden with a different value.' in str(w[-1].message)
 
         assert 'components' in schema
         assert 'schemas' in schema['components']

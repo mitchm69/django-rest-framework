@@ -163,6 +163,12 @@ The string that should used for any versioning parameters, such as in the media 
 
 Default: `'version'`
 
+#### DEFAULT_VERSIONING_CLASS
+
+The default versioning scheme to use.
+
+Default: `None`
+
 ---
 
 ## Authentication settings
@@ -307,6 +313,15 @@ A list of format strings that should be used by default for parsing inputs to `T
 May be a list including the string `'iso-8601'` or Python [strftime format][strftime] strings.
 
 Default: `['iso-8601']`
+
+
+#### DURATION_FORMAT
+
+Indicates the default format that should be used for rendering the output of `DurationField` serializer fields.  If `None`, then `DurationField` serializer fields will return Python `timedelta` objects, and the duration encoding will be determined by the renderer.
+
+May be any of `None`, `'iso-8601'` or `'django'` (the format accepted by `django.utils.dateparse.parse_duration`).
+
+Default: `'django'`
 
 ---
 
@@ -454,4 +469,4 @@ Default: `None`
 [cite]: https://www.python.org/dev/peps/pep-0020/
 [rfc4627]: https://www.ietf.org/rfc/rfc4627.txt
 [heroku-minified-json]: https://github.com/interagent/http-api-design#keep-json-minified-in-all-responses
-[strftime]: https://docs.python.org/3/library/time.html#time.strftime
+[strftime]: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes

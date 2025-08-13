@@ -9,7 +9,7 @@ REST framework also provides an HTML renderer that renders the browsable API.
 
 import base64
 import contextlib
-from collections import OrderedDict
+import datetime
 from urllib import parse
 
 from django import forms
@@ -19,12 +19,13 @@ from django.core.paginator import Page
 from django.template import engines, loader
 from django.urls import NoReverseMatch
 from django.utils.html import mark_safe
+from django.utils.http import parse_header_parameters
 from django.utils.safestring import SafeString
 
 from rest_framework import VERSION, exceptions, serializers, status
 from rest_framework.compat import (
     INDENT_SEPARATORS, LONG_SEPARATORS, SHORT_SEPARATORS, coreapi, coreschema,
-    parse_header_parameters, pygments_css, yaml
+    pygments_css, yaml
 )
 from rest_framework.exceptions import ParseError
 from rest_framework.request import is_form_media_type, override_method
@@ -170,6 +171,10 @@ class TemplateHTMLRenderer(BaseRenderer):
 
     def get_template_context(self, data, renderer_context):
         response = renderer_context['response']
+        # in case a ValidationError is caught the data parameter may be a list
+        # see rest_framework.views.exception_handler
+        if isinstance(data, list):
+            return {'details': data, 'status_code': response.status_code}
         if response.exception:
             data['status_code'] = response.status_code
         return data
@@ -507,6 +512,9 @@ class BrowsableAPIRenderer(BaseRenderer):
             return self.render_form_for_serializer(serializer)
 
     def render_form_for_serializer(self, serializer):
+        if isinstance(serializer, serializers.ListSerializer):
+            return None
+
         if hasattr(serializer, 'initial_data'):
             serializer.is_valid()
 
@@ -556,10 +564,13 @@ class BrowsableAPIRenderer(BaseRenderer):
                 context['indent'] = 4
 
                 # strip HiddenField from output
+                is_list_serializer = isinstance(serializer, serializers.ListSerializer)
+                serializer = serializer.child if is_list_serializer else serializer
                 data = serializer.data.copy()
                 for name, field in serializer.fields.items():
                     if isinstance(field, serializers.HiddenField):
                         data.pop(name, None)
+                data = [data] if is_list_serializer else data
                 content = renderer.render(data, accepted, context)
                 # Renders returns bytes, but CharField expects a str.
                 content = content.decode()
@@ -653,7 +664,7 @@ class BrowsableAPIRenderer(BaseRenderer):
         raw_data_patch_form = self.get_raw_data_form(data, view, 'PATCH', request)
         raw_data_put_or_patch_form = raw_data_put_form or raw_data_patch_form
 
-        response_headers = OrderedDict(sorted(response.items()))
+        response_headers = dict(sorted(response.items()))
         renderer_content_type = ''
         if renderer:
             renderer_content_type = '%s' % renderer.media_type
@@ -1057,6 +1068,7 @@ class OpenAPIRenderer(BaseRenderer):
             def ignore_aliases(self, data):
                 return True
         Dumper.add_representer(SafeString, Dumper.represent_str)
+        Dumper.add_representer(datetime.timedelta, encoders.CustomScalar.represent_timedelta)
         return yaml.dump(data, default_flow_style=False, sort_keys=False, Dumper=Dumper).encode('utf-8')
 
 

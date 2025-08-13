@@ -1,7 +1,6 @@
 import inspect
 import pickle
 import re
-import sys
 from collections import ChainMap
 from collections.abc import Mapping
 
@@ -205,10 +204,6 @@ class TestSerializer:
                 exceptions.ErrorDetail(string='Raised error', code='invalid')
             ]}
 
-    @pytest.mark.skipif(
-        sys.version_info < (3, 7),
-        reason="subscriptable classes requires Python 3.7 or higher",
-    )
     def test_serializer_is_subscriptable(self):
         assert serializers.Serializer is serializers.Serializer["foo"]
 
@@ -743,10 +738,6 @@ class TestDeclaredFieldInheritance:
 
 
 class Test8301Regression:
-    @pytest.mark.skipif(
-        sys.version_info < (3, 9),
-        reason="dictionary union operator requires Python 3.9 or higher",
-    )
     def test_ReturnDict_merging(self):
         # Serializer.data returns ReturnDict, this is essentially a test for that.
 
@@ -762,3 +753,24 @@ class Test8301Regression:
 
         assert (s.data | {}).__class__ == s.data.__class__
         assert ({} | s.data).__class__ == s.data.__class__
+
+
+class TestSetValueMethod:
+    # Serializer.set_value() modifies the first parameter in-place.
+
+    s = serializers.Serializer()
+
+    def test_no_keys(self):
+        ret = {'a': 1}
+        self.s.set_value(ret, [], {'b': 2})
+        assert ret == {'a': 1, 'b': 2}
+
+    def test_one_key(self):
+        ret = {'a': 1}
+        self.s.set_value(ret, ['x'], 2)
+        assert ret == {'a': 1, 'x': 2}
+
+    def test_nested_key(self):
+        ret = {'a': 1}
+        self.s.set_value(ret, ['x', 'y'], 2)
+        assert ret == {'a': 1, 'x': {'y': 2}}
